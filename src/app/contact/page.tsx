@@ -10,21 +10,32 @@ export const metadata: Metadata = buildMetadata({
   path: "/contact",
 });
 
-export default function ContactPage() {
+type Props = {
+  searchParams: Promise<{ intent?: string }>;
+};
+
+export default async function ContactPage({ searchParams }: Props) {
+  const params = await searchParams;
+  const intent = params.intent === "demo" ? "demo" : "contact";
+
   return (
     <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Contact" }]} />
+        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: intent === "demo" ? "Request Demo" : "Contact" }]} />
       </div>
       <PageHero
-        title="Contact our team"
-        description="Request a platform demo, speak with our enterprise sales team, or get technical support. We respond within one business day."
+        title={intent === "demo" ? "Request a platform demo" : "Contact our team"}
+        description={
+          intent === "demo"
+            ? "Schedule a personalized walkthrough with our solutions engineering team."
+            : "Request a platform demo, speak with our enterprise sales team, or get technical support. We respond within one business day."
+        }
       />
 
       <section className="py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-5 gap-12">
           <div className="lg:col-span-3">
-            <ContactForm />
+            <ContactForm intent={intent} />
           </div>
 
           <div className="lg:col-span-2 space-y-8">

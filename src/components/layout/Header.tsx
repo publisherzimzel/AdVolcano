@@ -103,7 +103,7 @@ export function Header() {
             <Link href="/contact" className="text-[13px] font-medium text-neutral-600 hover:text-navy transition-colors duration-200">
               Contact Sales
             </Link>
-            <Link href="/contact" className="btn-primary">
+            <Link href="/contact?intent=demo" className="btn-primary">
               Request Demo
             </Link>
           </div>
@@ -152,7 +152,7 @@ export function Header() {
               </Link>
             ))}
           </div>
-          <Link href="/contact" className="block mt-3 btn-primary text-center" onClick={() => setMobileOpen(false)}>
+          <Link href="/contact?intent=demo" className="block mt-3 btn-primary text-center" onClick={() => setMobileOpen(false)}>
             Request Demo
           </Link>
         </nav>

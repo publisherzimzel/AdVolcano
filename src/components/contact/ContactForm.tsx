@@ -2,10 +2,16 @@
 
 import { useState } from "react";
 
-export function ContactForm() {
+type ContactFormProps = {
+  intent?: "contact" | "demo";
+};
+
+export function ContactForm({ intent = "contact" }: ContactFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  const isDemo = intent === "demo";
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -20,7 +26,7 @@ export function ContactForm() {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, intent }),
       });
 
       const result = await res.json();
@@ -40,6 +46,12 @@ export function ContactForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {isDemo && (
+        <div className="premium-card p-4 bg-blue/5 border-blue/20 text-[13px] text-neutral-700">
+          Request a personalized platform demo. Our solutions team will reach out within one business day.
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 gap-5">
         <div>
           <label htmlFor="firstName" className="block text-[13px] font-medium text-neutral-700 mb-1.5">
@@ -87,7 +99,8 @@ export function ContactForm() {
       </div>
       <div>
         <label htmlFor="message" className="block text-[13px] font-medium text-neutral-700 mb-1.5">
-          How can we help? <span className="text-red-500">*</span>
+          {isDemo ? "What would you like to see in the demo?" : "How can we help?"}{" "}
+          <span className="text-red-500">*</span>
         </label>
         <textarea id="message" name="message" rows={4} required className={`${inputClass} resize-none`} />
       </div>
@@ -97,12 +110,14 @@ export function ContactForm() {
       )}
       {success && (
         <p className="text-[13px] text-success bg-green-50 border border-green-200 px-4 py-3 rounded-sm">
-          Thank you. Our team will respond within one business day.
+          {isDemo
+            ? "Demo request received. Our team will contact you within one business day."
+            : "Thank you. Our team will respond within one business day."}
         </p>
       )}
 
       <button type="submit" disabled={loading} className="btn-primary disabled:opacity-50">
-        {loading ? "Sending…" : "Submit Request"}
+        {loading ? "Sending…" : isDemo ? "Request Demo" : "Submit Request"}
       </button>
     </form>
   );

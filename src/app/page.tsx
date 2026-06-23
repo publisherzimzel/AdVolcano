@@ -104,7 +104,7 @@ export default function HomePage() {
                 AdVolcano powers programmatic buying, real-time bidding, and measurement for brands investing $10M+ annually in digital media. A single platform trusted by Fortune 500 advertisers and tier-one agencies.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <Link href="/contact" className="btn-primary">Request Demo</Link>
+                <Link href="/contact?intent=demo" className="btn-primary">Request Demo</Link>
                 <Link href="/platform" className="btn-secondary">Explore Platform</Link>
               </div>
             </div>

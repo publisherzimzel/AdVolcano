@@ -52,7 +52,7 @@ export function CTABanner({
   title,
   description,
   primaryLabel = "Request Demo",
-  primaryHref = "/contact",
+  primaryHref = "/contact?intent=demo",
   secondaryLabel,
   secondaryHref = "/platform",
 }: {

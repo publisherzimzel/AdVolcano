@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
+import { getFallbackExchangeRate, getRazorpayConfig } from "@/lib/env";
+import { sendPaymentNotification } from "@/lib/email";
 import { calculatePayment, PAYMENT_MIN_USD } from "@/lib/payment";
 
 export async function POST(request: Request) {
   try {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const { keyId, keySecret } = getRazorpayConfig();
 
     if (!keyId || !keySecret) {
       return NextResponse.json(
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const rate = parseFloat(exchangeRate) || parseFloat(process.env.USD_INR_EXCHANGE_RATE || "94.70");
+    const rate = parseFloat(exchangeRate) || getFallbackExchangeRate();
     const breakdown = calculatePayment(amount, rate);
 
     if (breakdown.totalPaise < 100) {
@@ -52,11 +53,23 @@ export async function POST(request: Request) {
       },
     });
 
+    try {
+      await sendPaymentNotification({
+        name: name.trim(),
+        email: email.trim(),
+        amountUsd: amount,
+        totalInr: breakdown.totalInr,
+        orderId: order.id,
+      });
+    } catch (emailErr) {
+      console.error("Payment notification email failed:", emailErr);
+    }
+
     return NextResponse.json({
       orderId: order.id,
       amount: breakdown.totalPaise,
       currency: "INR",
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || keyId,
+      keyId,
       breakdown,
     });
   } catch (err) {
