@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
-import { getFallbackExchangeRate, getRazorpayConfig } from "@/lib/env";
+import { getRazorpayConfig } from "@/lib/env";
 import { sendPaymentNotification } from "@/lib/email";
+import { fetchUsdToInrRate } from "@/lib/exchange-rate";
 import { calculatePayment, PAYMENT_MIN_USD } from "@/lib/payment";
 
 export async function POST(request: Request) {
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, email, amountUsd, exchangeRate } = body;
+    const { name, email, amountUsd } = body;
 
     if (!name?.trim() || !email?.trim()) {
       return NextResponse.json({ error: "Name and email are required." }, { status: 400 });
@@ -30,7 +31,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const rate = parseFloat(exchangeRate) || getFallbackExchangeRate();
+    let rate: number;
+    try {
+      const liveRate = await fetchUsdToInrRate();
+      rate = liveRate.rate;
+    } catch {
+      return NextResponse.json(
+        { error: "Could not fetch live USD/INR exchange rate. Please try again." },
+        { status: 503 }
+      );
+    }
+
     const breakdown = calculatePayment(amount, rate);
 
     if (breakdown.totalPaise < 100) {

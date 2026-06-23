@@ -33,35 +33,65 @@ export function PaymentForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [amountUsd, setAmountUsd] = useState("");
-  const [exchangeRate, setExchangeRate] = useState(94.7);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [rateUpdatedAt, setRateUpdatedAt] = useState<string | null>(null);
+  const [rateSource, setRateSource] = useState<string | null>(null);
+  const [rateStale, setRateStale] = useState(false);
+  const [pollIntervalMs, setPollIntervalMs] = useState(5 * 60 * 1000);
+  const [rateLoading, setRateLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [scriptReady, setScriptReady] = useState(false);
 
-  const fetchRate = useCallback(async () => {
-    setRefreshing(true);
+  const fetchRate = useCallback(async (isInitial = false) => {
+    if (isInitial) {
+      setRateLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
     try {
-      const res = await fetch("/api/exchange-rate");
+      const res = await fetch("/api/exchange-rate", { cache: "no-store" });
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Could not fetch exchange rate.");
+      }
+
       setExchangeRate(data.rate);
       setRateUpdatedAt(data.updatedAt);
+      setRateSource(data.source);
+      setRateStale(Boolean(data.stale));
+      if (data.refreshIntervalMs) {
+        setPollIntervalMs(data.refreshIntervalMs);
+      }
+      setError((prev) => (prev === "Could not refresh exchange rate." ? "" : prev));
     } catch {
-      setError("Could not refresh exchange rate.");
+      if (!isInitial) {
+        setError("Could not refresh exchange rate.");
+      }
     } finally {
+      setRateLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchRate();
+    fetchRate(true);
   }, [fetchRate]);
+
+  useEffect(() => {
+    const interval = setInterval(() => fetchRate(false), pollIntervalMs);
+    return () => clearInterval(interval);
+  }, [fetchRate, pollIntervalMs]);
 
   const parsedAmount = parseFloat(amountUsd) || 0;
   const breakdown: PaymentBreakdown | null =
-    parsedAmount >= PAYMENT_MIN_USD ? calculatePayment(parsedAmount, exchangeRate) : null;
+    exchangeRate !== null && parsedAmount >= PAYMENT_MIN_USD
+      ? calculatePayment(parsedAmount, exchangeRate)
+      : null;
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault();
@@ -83,13 +113,18 @@ export function PaymentForm() {
       return;
     }
 
+    if (exchangeRate === null) {
+      setError("Live exchange rate is still loading. Please wait a moment.");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, amountUsd: parsedAmount, exchangeRate }),
+        body: JSON.stringify({ name, email, amountUsd: parsedAmount }),
       });
 
       const data = await res.json();
@@ -192,18 +227,31 @@ export function PaymentForm() {
         <div className="flex items-center justify-between gap-4 p-4 bg-surface border border-neutral-200 rounded-sm">
           <div>
             <p className="text-[13px] text-neutral-600">
-              USD to INR: <span className="font-semibold text-navy">₹{exchangeRate.toFixed(2)}</span>
+              USD to INR:{" "}
+              <span className="font-semibold text-navy">
+                {rateLoading || exchangeRate === null ? "Loading…" : `₹${exchangeRate.toFixed(2)}`}
+              </span>
+              {!rateLoading && exchangeRate !== null && (
+                <span className="ml-2 text-[11px] text-teal font-medium">Live</span>
+              )}
             </p>
             {rateUpdatedAt && (
               <p className="text-[11px] text-neutral-400 mt-0.5">
                 Last updated: {new Date(rateUpdatedAt).toLocaleString()}
+                {rateSource ? ` · ${rateSource}` : ""}
+                {rateStale ? " · using last known rate" : ""}
+              </p>
+            )}
+            {!rateLoading && exchangeRate !== null && (
+              <p className="text-[11px] text-neutral-400 mt-0.5">
+                Auto-refreshes every {Math.round(pollIntervalMs / 60000)} minutes
               </p>
             )}
           </div>
           <button
             type="button"
-            onClick={fetchRate}
-            disabled={refreshing}
+            onClick={() => fetchRate(false)}
+            disabled={refreshing || rateLoading}
             className="text-[12px] font-medium text-blue hover:text-blue-light flex items-center gap-1.5 disabled:opacity-50"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" className={refreshing ? "animate-spin" : ""}>
@@ -250,7 +298,7 @@ export function PaymentForm() {
 
         <button
           type="submit"
-          disabled={loading || !breakdown}
+          disabled={loading || !breakdown || rateLoading || exchangeRate === null}
           className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? "Opening Razorpay…" : "Proceed to Payment"}

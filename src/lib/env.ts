@@ -32,7 +32,3 @@ export function getRazorpayConfig() {
 export function getFixerApiKey() {
   return process.env.FIXER_API_KEY?.trim();
 }
-
-export function getFallbackExchangeRate() {
-  return parseFloat(process.env.USD_INR_EXCHANGE_RATE || "94.70");
-}

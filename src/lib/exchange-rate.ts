@@ -1,59 +1,108 @@
-import { getFallbackExchangeRate, getFixerApiKey } from "@/lib/env";
+import { getFixerApiKey } from "@/lib/env";
 
-export async function fetchUsdToInrRate(): Promise<{
+/** How long the server keeps a fetched rate before refreshing from the internet. */
+export const EXCHANGE_RATE_REFRESH_MS = 5 * 60 * 1000;
+
+type RateSource = "fixer" | "frankfurter" | "cache";
+
+export type ExchangeRateResult = {
   rate: number;
   updatedAt: string;
-  source: "fixer" | "fallback";
-}> {
-  const fallback = getFallbackExchangeRate();
-  const apiKey = getFixerApiKey();
+  source: RateSource;
+  stale?: boolean;
+};
 
-  if (apiKey) {
-    try {
-      const res = await fetch(
-        `https://data.fixer.io/api/latest?access_key=${apiKey}&base=USD&symbols=INR`,
-        { next: { revalidate: 3600 } }
-      );
+type RateCache = ExchangeRateResult & { fetchedAt: number };
 
-      if (res.ok) {
-        const data = await res.json();
-        const rate = data.rates?.INR;
-        if (data.success !== false && rate && typeof rate === "number") {
-          return {
-            rate: Math.round(rate * 100) / 100,
-            updatedAt: data.date ? `${data.date}T00:00:00Z` : new Date().toISOString(),
-            source: "fixer",
-          };
-        }
-      }
-    } catch {
-      // fall through
-    }
+const globalForRate = globalThis as typeof globalThis & {
+  __usdInrRateCache?: RateCache;
+};
+
+function roundRate(rate: number) {
+  return Math.round(rate * 100) / 100;
+}
+
+async function fetchFromFixer(apiKey: string): Promise<ExchangeRateResult | null> {
+  try {
+    const res = await fetch(
+      `https://data.fixer.io/api/latest?access_key=${apiKey}&base=USD&symbols=INR`,
+      { cache: "no-store" }
+    );
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const rate = data.rates?.INR;
+    if (data.success === false || typeof rate !== "number") return null;
+
+    return {
+      rate: roundRate(rate),
+      updatedAt: data.date ? `${data.date}T00:00:00Z` : new Date().toISOString(),
+      source: "fixer",
+    };
+  } catch {
+    return null;
   }
+}
 
-  // Free fallback if no Fixer key
+async function fetchFromFrankfurter(): Promise<ExchangeRateResult | null> {
   try {
     const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=INR", {
-      next: { revalidate: 3600 },
+      cache: "no-store",
     });
-    if (res.ok) {
-      const data = await res.json();
-      const rate = data.rates?.INR;
-      if (rate && typeof rate === "number") {
-        return {
-          rate: Math.round(rate * 100) / 100,
-          updatedAt: new Date().toISOString(),
-          source: "fallback",
-        };
-      }
-    }
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const rate = data.rates?.INR;
+    if (typeof rate !== "number") return null;
+
+    return {
+      rate: roundRate(rate),
+      updatedAt: new Date().toISOString(),
+      source: "frankfurter",
+    };
   } catch {
-    // fall through
+    return null;
+  }
+}
+
+async function fetchLiveRate(): Promise<ExchangeRateResult | null> {
+  const apiKey = getFixerApiKey();
+  if (apiKey) {
+    const fixerRate = await fetchFromFixer(apiKey);
+    if (fixerRate) return fixerRate;
   }
 
-  return {
-    rate: fallback,
-    updatedAt: new Date().toISOString(),
-    source: "fallback",
-  };
+  return fetchFromFrankfurter();
+}
+
+export async function fetchUsdToInrRate(): Promise<ExchangeRateResult> {
+  const cache = globalForRate.__usdInrRateCache;
+  const now = Date.now();
+
+  if (cache && now - cache.fetchedAt < EXCHANGE_RATE_REFRESH_MS) {
+    return {
+      rate: cache.rate,
+      updatedAt: cache.updatedAt,
+      source: cache.source,
+    };
+  }
+
+  const live = await fetchLiveRate();
+  if (live) {
+    globalForRate.__usdInrRateCache = { ...live, fetchedAt: now };
+    return live;
+  }
+
+  if (cache) {
+    return {
+      rate: cache.rate,
+      updatedAt: cache.updatedAt,
+      source: "cache",
+      stale: true,
+    };
+  }
+
+  throw new Error("Unable to fetch USD/INR exchange rate. Please try again shortly.");
 }
